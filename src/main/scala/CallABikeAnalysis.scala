@@ -21,9 +21,10 @@ object CallABikeAnalysis {
         .filter("city = \"Hamburg\" AND startStation is not null AND endStation is not null")
         .cache()
 
-    println(top20("startStation", hamburgDF, spark).show())
-    println(top20("endStation", hamburgDF, spark).show())
+    csv.write(top20("startStation", hamburgDF, spark), s"${args(1)}/top20HamburgStartStations")
+    csv.write(top20("endStation", hamburgDF, spark), s"${args(1)}/top20HamburgEndStations")
 
+    // Typed approach on Dataset
     val ds =
       df.select(
         $"CITY_RENTAL_ZONE".as("city"),
@@ -31,12 +32,8 @@ object CallABikeAnalysis {
         $"END_RENTAL_ZONE".as("endStation")
       ).as[RentalData]
 
-    val topCitiesByUsageDS = top20CitiesByUsage(ds, spark)
-    println(topCitiesByUsageDS.show())
-
-    csv.write(topCitiesByUsageDS, args(1))
-
-    println(top20EndStations(ds, spark))
+    csv.write(top20CitiesByUsage(ds, spark), s"${args(1)}/topCities")
+    csv.write(top20RoutesHamburg(ds, spark), s"${args(1)}/topRoutesHamburg")
   }
 
   // Basic SQL on Dataframe approach
@@ -70,12 +67,22 @@ object CallABikeAnalysis {
       .limit(20)
   }
 
-  // start and end stations count
   def top20RoutesHamburg(dataset: Dataset[RentalData], sparkSession: SparkSession) = {
-    ???
+    import sparkSession.implicits._
+    dataset
+      .filter(booking => booking.city.contains("Hamburg") && booking.startStation.nonEmpty && booking.endStation.nonEmpty)
+      .groupByKey(booking => (booking.startStation, booking.endStation))
+      .count()
+      .map { case (key, count) => (key._1, key._2, count) }
+      .toDF(Seq("start", "end", "count"): _*)
+      .as[TopRouteResult]
+      .sort($"count".desc)
+      .limit(20)
   }
 
   def trafficIncreaseHamburgHBF(dataset: Dataset[RentalData], sparkSession: SparkSession) = ???
 
   case class RentalData(city: Option[String], startStation: Option[String], endStation: Option[String])
+
+  case class TopRouteResult(start: String, end: String, count: Long)
 }
