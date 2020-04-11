@@ -1,19 +1,15 @@
 import org.apache.spark.sql._
+import storage.CSV
 
 object CallABikeAnalysis {
 
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder.appName("Call A Bike Analysis").getOrCreate()
-    import spark.implicits._
-    val df =
-      spark
-        .read
-        .format("csv")
-        .option("delimiter", ";")
-        .option("header", "true")
-        .option("inferSchema", "true")
-        .load(args(0))
+    val csv = new CSV(spark)
 
+    val df = csv.read(args(0))
+
+    import spark.implicits._
     // Basic SQL on Dataframe approach
     val hamburgDF =
       df
@@ -38,12 +34,7 @@ object CallABikeAnalysis {
     val topCitiesByUsageDS = top20CitiesByUsage(ds, spark)
     println(topCitiesByUsageDS.show())
 
-    topCitiesByUsageDS
-      .write
-      .format("csv")
-      .option("header", "true")
-      .mode(SaveMode.Overwrite)
-      .save(args(1))
+    csv.write(topCitiesByUsageDS, args(1))
 
     println(top20EndStations(ds, spark))
   }
