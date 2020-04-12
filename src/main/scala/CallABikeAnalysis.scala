@@ -1,11 +1,15 @@
+import java.time.LocalDateTime
+
 import org.apache.spark.sql._
-import storage.CSV
+import org.apache.spark.sql.expressions.Window
+import storage._
 
 object CallABikeAnalysis {
 
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder.appName("Call A Bike Analysis").getOrCreate()
     val csv = new CSV(spark)
+    val text = new Text(spark)
 
     val df = csv.read(args(0))
 
@@ -21,8 +25,8 @@ object CallABikeAnalysis {
         .filter("city = \"Hamburg\" AND startStation is not null AND endStation is not null")
         .cache()
 
-    csv.write(top20("startStation", hamburgDF, spark), s"${args(1)}/top20HamburgStartStations")
-    csv.write(top20("endStation", hamburgDF, spark), s"${args(1)}/top20HamburgEndStations")
+//    csv.write(top20("startStation", hamburgDF, spark), s"${args(1)}/top20HamburgStartStations")
+//    csv.write(top20("endStation", hamburgDF, spark), s"${args(1)}/top20HamburgEndStations")
 
     // Typed approach on Dataset
     val ds =
@@ -32,8 +36,10 @@ object CallABikeAnalysis {
         $"END_RENTAL_ZONE".as("endStation")
       ).as[RentalData]
 
-    csv.write(top20CitiesByUsage(ds, spark), s"${args(1)}/topCities")
-    csv.write(top20RoutesHamburg(ds, spark), s"${args(1)}/topRoutesHamburg")
+//    csv.write(top20CitiesByUsage(ds, spark), s"${args(1)}/topCities")
+//    csv.write(top20RoutesHamburg(ds, spark), s"${args(1)}/topRoutesHamburg")
+
+    text.write(averageTripLengthByDay(df, spark), s"${args(1)}/averageTripLengthByDay")
   }
 
   // Basic SQL on Dataframe approach
@@ -80,9 +86,32 @@ object CallABikeAnalysis {
       .limit(20)
   }
 
-  def trafficIncreaseHamburgHBF(dataset: Dataset[RentalData], sparkSession: SparkSession) = ???
+  def averageTripLengthByDay(dataframe: DataFrame, sparkSession: SparkSession) = {
+    import sparkSession.implicits._
+    import org.apache.spark.sql.functions._
+    dataframe
+      .select($"TRIP_LENGTH_MINUTES".as("length"), $"DATE_BOOKING".as("date"))
+      .na
+      .fill(0, Seq("length"))
+      .groupBy(window($"date", "1 day"))
+      .agg(mean($"length"))
+      .sort($"avg(length)")
+      .map(_.mkString(" "))
+      .limit(50)
+  }
+
+  //Typed
+//  def averageTripLengthByDay(dataset: Dataset[TripData], sparkSession: SparkSession) = {
+//    import sparkSession.implicits._
+//    dataset
+//      // replacing non existing Length values with 0
+//      .map { case TripData(x, y) => TripData(x orElse Some(0), y) }
+//
+//  }
 
   case class RentalData(city: Option[String], startStation: Option[String], endStation: Option[String])
+
+  case class TripData(length: Option[Int], date: java.sql.Timestamp)
 
   case class TopRouteResult(start: String, end: String, count: Long)
 }
