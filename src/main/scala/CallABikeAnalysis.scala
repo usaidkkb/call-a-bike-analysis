@@ -1,55 +1,66 @@
-import Transformations._
-import config.{Config, OptionsParser}
+import Transformations.{averageTripLengthByDay, top20, top20RoutesHamburg, _}
+import config.Config
+import org.apache.spark.sql.{DataFrame, Dataset}
 import storage._
 
-import scala.util.{Failure, Success, Try}
+import scala.util.Try
 
 object CallABikeAnalysis extends SparkJob {
+  override def appName: String = "Call a Bike Analysis"
 
-  def main(args: Array[String]): Unit = {
+  override protected def runPipeline(config: Config): Try[Unit] = {
     val csv = new CSV(spark)
     val text = new Text(spark)
-    val optionsParser = new OptionsParser()
 
-    optionsParser
-      .parse(args, Config())
-      .fold[Try[Unit]](Failure(throw new Exception("Parsing Options failed"))) {
-        config => {
-          val job = {
-            val df = csv.read(config.input)
-            val outputDir = config.output
+    val df = csv.read(config.input)
+    val outputDir = config.output
 
-            import spark.implicits._
-            // Basic SQL on Dataframe approach
-            val hamburgDF =
-              df
-                .select(
-                  $"CITY_RENTAL_ZONE".as("city"),
-                  $"START_RENTAL_ZONE".as("startStation"),
-                  $"END_RENTAL_ZONE".as("endStation")
-                )
-                .filter("city = \"Hamburg\" AND startStation is not null AND endStation is not null")
-                .cache()
+    val transformedDatasets = transform(df)
 
-            csv.write(top20("startStation", hamburgDF, spark), s"$outputDir/top20HamburgStartStations")
-            csv.write(top20("endStation", hamburgDF, spark), s"$outputDir/top20HamburgEndStations")
+    Try {
+      csv.write(transformedDatasets.top20StartStations, s"$outputDir/top20HamburgStartStations")
+      csv.write(transformedDatasets.top20EndStations, s"$outputDir/top20HamburgEndStations")
+      csv.write(transformedDatasets.top20Cities, s"$outputDir/topCities")
+      csv.write(transformedDatasets.top20RoutesHamburg, s"$outputDir/topRoutesHamburg")
+      text.write(transformedDatasets.averageTriplength, s"$outputDir/averageTripLengthByDay")
+    }
+  }
 
-            // Typed approach on Dataset
-            val ds =
-              df.select(
-                $"CITY_RENTAL_ZONE".as("city"),
-                $"START_RENTAL_ZONE".as("startStation"),
-                $"END_RENTAL_ZONE".as("endStation")
-              ).as[RentalData]
+  case class TransformedDatasets(
+                                top20StartStations: DataFrame,
+                                top20EndStations: DataFrame,
+                                top20Cities: DataFrame,
+                                top20RoutesHamburg: Dataset[TopRouteResult],
+                                averageTriplength: Dataset[String]
+                                )
 
-            csv.write(top20CitiesByUsage(ds, spark), s"$outputDir/topCities")
-            csv.write(top20RoutesHamburg(ds, spark), s"$outputDir/topRoutesHamburg")
-            text.write(averageTripLengthByDay(df, spark), s"$outputDir/averageTripLengthByDay")
-          }
-          Success(job)
-        }
-      }
+   def transform(dataframe: DataFrame): TransformedDatasets = {
+    import spark.implicits._
 
+    val hamburgDF =
+      dataframe
+        .select(
+          $"CITY_RENTAL_ZONE".as("city"),
+          $"START_RENTAL_ZONE".as("startStation"),
+          $"END_RENTAL_ZONE".as("endStation")
+        )
+        .filter("city = \"Hamburg\" AND startStation is not null AND endStation is not null")
+        .cache()
+
+    val ds =
+      dataframe.select(
+        $"CITY_RENTAL_ZONE".as("city"),
+        $"START_RENTAL_ZONE".as("startStation"),
+        $"END_RENTAL_ZONE".as("endStation")
+      ).as[RentalData]
+
+    TransformedDatasets(
+      top20("startStation", hamburgDF, spark),
+      top20("endStation", hamburgDF, spark),
+      top20CitiesByUsage(ds, spark),
+      top20RoutesHamburg(ds, spark),
+      averageTripLengthByDay(dataframe, spark)
+    )
   }
 
 }
