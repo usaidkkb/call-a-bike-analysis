@@ -9,5 +9,6 @@ val sparkVersion = "2.2.0"
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % sparkVersion % Provided,
   "org.apache.spark" %% "spark-sql"  % sparkVersion % Provided,
-  "com.github.scopt" %% "scopt"      % "3.7.1"      % Compile
+  "com.github.scopt" %% "scopt"      % "3.7.1"      % Compile,
+  "org.scalatest"    %% "scalatest"  % "3.1.1"      % Compile
 )

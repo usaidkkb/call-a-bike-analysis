@@ -18,7 +18,7 @@ class CSV(spark: SparkSession) extends Storage {
       .option("inferSchema", "true")
       .load(location)
 
-  override def write[T](dataset: Dataset[T], location: String) =
+  override def write[T](dataset: Dataset[T], location: String): Unit =
     dataset
       .write
       .format("csv")
@@ -38,7 +38,7 @@ class Text(spark: SparkSession) extends Storage {
       .option("inferSchema", "true")
       .load(location)
 
-  override def write[T](dataset: Dataset[T], location: String) =
+  override def write[T](dataset: Dataset[T], location: String): Unit =
     dataset
       .write
       .option("header", "true")
